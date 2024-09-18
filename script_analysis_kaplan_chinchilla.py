@@ -15,6 +15,7 @@ vocab_size = 32e3
 aspect_ratio = 39.2 # d/L = 40, 39.2
 # gamma = (aspect_ratio/12)**(1/3) * vocab_size # N_T = N_\e + gamma N_\e^{1/3}
 gamma = 47491
+aspect_ratio = 12*(gamma / vocab_size)**3
 ctx=2048
 
 coeffs = 'epoch' # 'epoch' or 'chin'
@@ -38,8 +39,10 @@ def kaplan_chin_loss(N_T, D, Nc, Dc, alpha, beta, E):
 	return Loss
 
 print('target synth N propto C^a, a=', beta/(beta+alpha))
+print('L propto C^b, b=', alpha*beta/(beta+alpha))
 
-N_nonemb_all = np.logspace(2.9,9.2,20) # Kaplan paper "768 to 1.5 billion non-embedding parameters"
+num_models = 20 # default 20
+N_nonemb_all = np.logspace(2.9,9.2,num_models) # Kaplan paper "768 to 1.5 billion non-embedding parameters"
 d_all = (N_nonemb_all/(12/aspect_ratio))**(1/3) # start from fixed aspect ratio
 N_emb = vocab_size*d_all
 N_T_all = N_nonemb_all + N_emb
@@ -122,7 +125,6 @@ fig.tight_layout()
 fig.savefig(os.path.join(save_path,'kaplan_chin_loss_D_vs_NT.png'))
 plt.close()
 
-
 # calculate compute and optimal params
 info_arr = []
 for i in range(len(N_T_all)):
@@ -136,7 +138,8 @@ for i in range(len(N_T_all)):
 	
 # calculate C_T and N^*_T 
 info_arr = np.array(info_arr)
-c_range_bounds = [13.4, 20.7]
+# c_range_bounds = [13.4, 20.7]
+c_range_bounds = [14, 20.7]
 C_range_T = np.logspace(c_range_bounds[0],c_range_bounds[1],100)
 best_loss = []
 for C_i in C_range_T:
@@ -193,6 +196,40 @@ fig.tight_layout()
 fig.savefig(os.path.join(save_path,'kaplan_chin_loss_NE_vs_CE.png'))
 plt.close()
 
+# plot N_nonE vs C_nonE with fit
+fig_dims = (10,10)
+fig, ax = plt.subplots(1,1,figsize=fig_dims)
+for i in range(len(N_nonemb_all)):
+	label_i = None
+	ax.plot(6*N_nonemb_all[i]*D_all, Loss[:,i], label=label_i, color=colors_all[i])
+ax.scatter(C_range, best_loss_nonE[:,0], label='Compute efficient frontier', color='red',s=10, zorder=10)
+# fit L = bC^m
+m, b = np.polyfit(np.log(C_range[:]), np.log(best_loss_nonE[:,0]), 1)
+print('C_nonE, Kaplan compute-loss form',m)
+x_fit = np.logspace(9,25,100)
+y_fit = np.exp(m*np.log(x_fit) + b)
+ax.plot(x_fit,y_fit,label=f'Kaplan compute-loss form:\n $log (L^*_{{\setminus E}}) = {m:.3f} log(C_{{\setminus E}}) + {b:.2f}$', color='blue', linestyle='--', linewidth=3,zorder=8)
+
+# fit L - E = bC^m
+m, b = np.polyfit(np.log(C_range[:]), np.log(best_loss_nonE[:,0]-E), 1)
+print('C_nonE, Chinchilla compute-loss form, L-E',m)
+x_fit = np.logspace(9,25,100)
+y_fit = np.exp(m*np.log(x_fit) + b) + E
+ax.plot(x_fit,y_fit,label=f'Chinchilla compute-loss form:\n $log (L^*_{{\setminus E}}) - {E:.2f} = {m:.3f} log(C_{{\setminus E}}) + {b:.2f}$', color='green', linestyle='--', linewidth=3,zorder=8)
+
+ax.set_xlabel('$C_{\setminus E}$')
+ax.set_ylabel('Loss')
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.set_xlim([1e10,1e23])
+ax.grid(which='major', linestyle='--', linewidth='0.5', color='black')
+ax.grid(which='minor', linestyle='--', linewidth='0.2', color='black')
+ax.legend(loc='lower left')
+fig.tight_layout()
+fig.savefig(os.path.join(save_path,'kaplan_chin_loss_NE_vs_CE_fit.png'))
+plt.close()
+
+
 # plot of coefficient, N^*_nonE and C_nonE
 fig_dims = (15,10)
 fig, ax = plt.subplots(1,1,figsize=fig_dims)
@@ -200,8 +237,11 @@ ax.scatter(C_range[:], best_loss_nonE[:,1], label='Compute efficient frontier', 
 N_nonemb_all_1 = np.logspace(2,11,100)
 C_pred = N_nonemb_all_1*(N_nonemb_all_1 + (gamma/3)*N_nonemb_all_1**(1/3))**(-1/beta) * (N_nonemb_all_1 + gamma*N_nonemb_all_1**(1/3))**((1+alpha)/beta) * (beta/alpha * Dc/Nc)**(1/beta)*6
 ax.plot(C_pred[:], N_nonemb_all_1[:], label='Analytical $N^*_{{\setminus E}}$ vs. $C_{{\setminus E}}$', color='black', linewidth=3, linestyle='--',zorder=10)
+# ax.scatter(C_pred[17:81], N_nonemb_all_1[17:81], label='Analytical $N^*_{{\setminus E}}$ vs. $C_{{\setminus E}}$ used for fit', color='blue', linewidth=3, linestyle='--',zorder=10)
 m, b = np.polyfit(np.log(C_range[:]), np.log(best_loss_nonE[:,1]), 1)
-print('main coeff: slope on loss vs N_opt',m)
+print('main coeff: slope on loss vs N_opt, simulated points',m)
+# m_analy, b_analy = np.polyfit(np.log(C_pred[:]), np.log(N_nonemb_all_1[:]), 1) # fit on analytical, gives slight difference as logarithmically spaced on y not x axis
+# print('main coeff: slope on loss vs N_opt, analytical points',m_analy)
 x_fit = np.logspace(11,25,100)
 y_fit = np.exp(m*np.log(x_fit) + b)
 ax.plot(x_fit,y_fit,label=f'Local fit to frontier: $log (N^*_{{\setminus E}}) = {m:.2f} log(C_{{\setminus E}}) {b:.2f}$', color='deeppink', linestyle='-', linewidth=3,zorder=11)
@@ -232,13 +272,47 @@ ax.set_xlabel('$C_T$')
 ax.set_ylabel('Loss')
 ax.set_xscale('log')
 ax.set_yscale('log')
-ax.set_xlim([1e10,1e23])
+ax.set_xlim([1e13,1e23])
 ax.grid(which='major', linestyle='--', linewidth='0.5', color='black')
 # ax.grid(which='minor', linestyle='--', linewidth='0.2', color='black')
 ax.legend(loc='upper right')
 fig.tight_layout()
 fig.savefig(os.path.join(save_path,'kaplan_chin_loss_NT_vs_CT.png'))
 plt.close()
+
+# plot N_T vs C_T  with fit
+fig_dims = (10,10)
+fig, ax = plt.subplots(1,1,figsize=fig_dims)
+for i in range(len(N_T_all)):
+	label_i = None
+	ax.plot(6*N_T_all[i]*D_all, Loss[:,i], label=label_i, color=colors_all[i])
+ax.scatter(C_range_T, best_loss_T[:,0], label='Compute efficient frontier', color='red',s=10, zorder=10)
+# fit L = bC^m
+m, b = np.polyfit(np.log(C_range_T[:]), np.log(best_loss_T[:,0]), 1)
+print('C_T, Kaplan compute-loss form',m)
+x_fit = np.logspace(13,25,100)
+y_fit = np.exp(m*np.log(x_fit) + b)
+ax.plot(x_fit,y_fit,label=f'Kaplan compute-loss form:\n $log (L^*_T) = {m:.3f} log(C_T) + {b:.2f}$', color='blue', linestyle='--', linewidth=3,zorder=8)
+
+# fit L - E = bC^m
+m, b = np.polyfit(np.log(C_range_T[:]), np.log(best_loss_T[:,0]-E), 1)
+print('C_T, Chinchilla compute-loss form, L-E',m)
+x_fit = np.logspace(13,25,100)
+y_fit = np.exp(m*np.log(x_fit) + b) + E
+ax.plot(x_fit,y_fit,label=f'Chinchilla compute-loss form:\n $log (L^*_T) - {E:.2f} = {m:.3f} log(C_T) + {b:.2f}$', color='green', linestyle='--', linewidth=3,zorder=8)
+
+ax.set_xlabel('$C_T$')
+ax.set_ylabel('Loss')
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.set_xlim([1e13,1e23])
+ax.grid(which='major', linestyle='--', linewidth='0.5', color='black')
+# ax.grid(which='minor', linestyle='--', linewidth='0.2', color='black')
+ax.legend(loc='lower left')
+fig.tight_layout()
+fig.savefig(os.path.join(save_path,'kaplan_chin_loss_NT_vs_CT_fit.png'))
+plt.close()
+
 
 # plot of coefficient, N^*_T and C_T
 fig_dims = (15,10)
@@ -270,14 +344,14 @@ N_nonemb_all_1 = np.logspace(2,11,100)
 C_pred = N_nonemb_all_1*(N_nonemb_all_1 + (gamma/3)*N_nonemb_all_1**(1/3))**(-1/beta) * (N_nonemb_all_1 + gamma*N_nonemb_all_1**(1/3))**((1+alpha)/beta) * (beta/alpha * Dc/Nc)**(1/beta)*6
 ax.plot(C_pred[:], N_nonemb_all_1[:], label=r'$N_{\setminus E}$', color='black', linewidth=3, linestyle='--',zorder=11)
 # g
-def fn_g(x, gamma, beta, alpha):
+def fn_g_recip(x, gamma, beta, alpha):
     term1 = 1
     term2 = - (1 / beta) * ((x ** (2/3) + (gamma / 9)) / (x ** (2/3) + (gamma / 3)))
     term3 = ((alpha + 1) / beta) * ((x ** (2/3) + (gamma / 3)) / (x ** (2/3) + gamma))
     result = term1 + term2 + term3
     return result
 
-g_all = fn_g(N_nonemb_all_1, gamma, beta, alpha)
+g_all = fn_g_recip(N_nonemb_all_1, gamma, beta, alpha)
 # plot on second axis
 ax2 = ax.twinx()
 ax2.plot(C_pred, 1/g_all, label='$g$', color='dodgerblue', linewidth=3, linestyle='--',zorder=11)
@@ -299,6 +373,73 @@ ax.grid(which='major', linestyle='--', linewidth='0.5', color='black')
 # ax.grid(which='minor', linestyle='--', linewidth='0.2', color='black')
 fig.tight_layout()
 fig.savefig(os.path.join(save_path,'kaplan_chin_eqs_only.png'))
+plt.close()
+
+
+# derivative of d log L_\E* / d log C_\E
+
+def fn_Nopt_to_C(x, gamma, alpha, beta, Nc, Dc):
+	# use eq 16 to convert from N^*_\E to C_\E
+	# x is N_\E
+	term1 = 6 * x * (x + gamma/3*x**(1/3))**(-1/beta)
+	term2 = (x + gamma*x**(1/3))**((1+alpha)/beta)
+	term3 = ((beta/alpha) * (Dc/Nc))**(1/beta)
+	C = term1 * term2 * term3
+	return C
+
+def fn_k_inner(x, y, gamma, alpha, beta, Nc, Dc):
+	# x is N_\E
+	# y is C_\E
+    term1 = -alpha * (Nc * (x + gamma/3*x**(1/3))) / ((x + gamma*x**(1/3))**(alpha+1))
+    term2 = beta * Dc * (y / (6*x))**(-beta)
+    result = term1 + term2
+    return result
+
+def fn_L_opt(x, y, gamma, alpha, beta, Nc, Dc, E):
+	# x is N_\E
+	# y is C_\E
+	term1 = Nc / (x + gamma*x**(1/3))**alpha
+	term2 = Dc / (y / (6*x))**beta
+	result = term1 + term2 + E
+	return result
+
+def fn_extra(x, y, gamma, alpha, beta, Nc, Dc, E):
+	# x is N_\E
+	# y is C_\E
+	term2 = beta * Dc * (y / (6*x))**(-beta)
+	return term2
+
+C_all = []
+k_all = []
+for N in N_nonemb_all_1:
+	C = fn_Nopt_to_C(N, gamma, alpha, beta, Nc, Dc)
+	part1 = fn_k_inner(N, C, gamma, alpha, beta, Nc, Dc)
+	g = 1/fn_g_recip(N, gamma, beta, alpha)
+	L_opt = fn_L_opt(N, C, gamma, alpha, beta, Nc, Dc, E)
+	extra_term = fn_extra(N, C, gamma, alpha, beta, Nc, Dc, E)
+	k = part1*g/L_opt - extra_term/L_opt
+	C_all.append(C)
+	k_all.append(k)
+
+fig_dims = (15,10)
+fig, ax = plt.subplots(1,1,figsize=fig_dims)
+# ax.plot(C_all, k_all, label=r'Analytical $ d \log L_{\setminus E}^* / d \log C_{\setminus E}$', color='dodgerblue', linewidth=3, linestyle='-',zorder=11)
+ax.plot(C_all, k_all, label=r'Analytical $k$', color='dodgerblue', linewidth=3, linestyle='-',zorder=11)
+ax.set_xlabel(r'$C_{\setminus E}$')
+# ax.set_ylabel(r'$ d \log L_{\setminus E}^* / d \log C_{\setminus E}$')
+ax.set_ylabel(r'$k$')
+# add horizontal lines
+ax.axhline(y=-0.057, color='grey', linestyle='--', linewidth=2, zorder=8, label=r'Kaplan reported slope, $\gamma=-0.057$')
+ax.axhline(y=-0.069, color='green', linestyle='--', linewidth=2, zorder=8, label=r'Chinchilla simulated fitted slope, $\gamma=-0.069$')
+# ax.axhline(y=-0.057, color='grey', linestyle='--', linewidth=2, zorder=8, label=r'Kaplan reported slope, $\gamma=-0.057$')
+ax.legend()
+ax.set_xscale('log')
+# ax.set_yscale('log')
+ax.set_xlim([C_all[0],C_all[-1]])
+# ax.set_ylim([-0.1,0.])
+ax.grid(which='major', linestyle='--', linewidth='0.5', color='black')
+fig.tight_layout()
+fig.savefig(os.path.join(save_path,'kaplan_chin_dlogLdlogC.png'))
 plt.close()
 
 
