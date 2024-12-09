@@ -1,5 +1,5 @@
 # Reconciling Kaplan and Chinchilla Scaling Laws
-Code from ArXiv paper 'Reconciling Kaplan and Chinchilla Scaling Laws' - [https://arxiv.org/abs/2406.12907](https://arxiv.org/abs/2406.12907) 
+Code from TMLR 2024 paper 'Reconciling Kaplan and Chinchilla Scaling Laws' - [https://arxiv.org/abs/2406.12907](https://arxiv.org/abs/2406.12907) 
 
 ## Code
 [```script_analysis_kaplan_chinchilla.py```](script_analysis_kaplan_chinchilla.py) is a single self-contained script for the analysis portion of the paper.  
