@@ -9,7 +9,7 @@ We do not provide code for the small-scale experiments.
 
 ## Citation
 ```
-@inproceedings{PearceCQRNN2022,
+@inproceedings{Pearce2024reconciling,
   author = {Tim Pearce and Jinyeop Song},
   title = {Reconciling Kaplan and Chinchilla Scaling Laws},
   booktitle = {TMLR},
