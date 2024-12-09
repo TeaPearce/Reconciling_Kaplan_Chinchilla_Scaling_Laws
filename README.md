@@ -12,7 +12,7 @@ We do not provide code for the small-scale experiments.
 @inproceedings{PearceCQRNN2022,
   author = {Tim Pearce and Jinyeop Song},
   title = {Reconciling Kaplan and Chinchilla Scaling Laws},
-  booktitle = {ArXiv},
+  booktitle = {TMLR},
   year = {2024}
 }
 ```
